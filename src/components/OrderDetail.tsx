@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Attachment, Order, Role, UserAccount, ManagerComment } from "../types";
 import { ASSIGNED_LABEL, ROLE_LABEL, STATUS_LABEL } from "../types";
-import { downloadDataUrl, uid, loadAccounts } from "../storage";
+import { downloadFile, uid, subscribeAccounts } from "../storage";
 import PhotoPicker from "./PhotoPicker";
 
 interface Props {
@@ -115,7 +115,7 @@ export default function OrderDetail({ order, role, onBack, onUpdate, onDelete }:
     if (!a.dataUrl) return;
     const ext = a.dataUrl.includes("image/png") ? "png" : "jpg";
     const safeName = a.name && a.name !== "comment" ? a.name : `order-${order.id}-${a.id}.${ext}`;
-    downloadDataUrl(a.dataUrl, safeName.endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`);
+    downloadFile(a.dataUrl, safeName.endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`);
   };
 
   const [showAddUsers, setShowAddUsers] = useState(false);
@@ -123,7 +123,8 @@ export default function OrderDetail({ order, role, onBack, onUpdate, onDelete }:
 
   useEffect(() => {
     if (role === 'manager') {
-      setAllAccounts(loadAccounts() as UserAccount[]);
+      const unsub = subscribeAccounts(setAllAccounts);
+      return unsub;
     }
   }, [role]);
 

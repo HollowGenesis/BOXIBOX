@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { UserAccount } from "../types";
-import { loadAccounts, saveAccounts, uid } from "../storage";
+import { subscribeAccounts, saveAccount, removeAccount, uid } from "../storage";
 
 interface Props {
   onClose: () => void;
@@ -12,38 +12,50 @@ export default function AccountsMenu({ onClose }: Props) {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"preparer" | "assembler">("preparer");
   const [selectedAvatar, setSelectedAvatar] = useState("👤");
+  const [busy, setBusy] = useState(false);
 
   const avatars = ["👤", "👷", "✂️", "📦", "🎨", "🔨", "🧵", "🧤", "📏", "👩", "👨", "⚡"];
 
   useEffect(() => {
-    setAccounts(loadAccounts() as UserAccount[]);
+    const unsub = subscribeAccounts(setAccounts);
+    return unsub;
   }, []);
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !password.trim()) {
       alert("Заполните все поля!");
       return;
     }
-    const newAcc: UserAccount = {
-      id: uid(),
-      name: name.trim(),
-      role,
-      password: password.trim(),
-      avatar: selectedAvatar,
-    };
-    const updated = [newAcc, ...accounts];
-    setAccounts(updated);
-    saveAccounts(updated);
-    setName("");
-    setPassword("");
+    setBusy(true);
+    try {
+      const newAcc: UserAccount = {
+        id: uid(),
+        name: name.trim(),
+        role,
+        password: password.trim(),
+        avatar: selectedAvatar,
+      };
+      await saveAccount(newAcc);
+      setName("");
+      setPassword("");
+      setSelectedAvatar("👤");
+    } catch (e) {
+      console.error(e);
+      alert("Ошибка создания аккаунта");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Удалить этот аккаунт?")) return;
-    const updated = accounts.filter((acc) => acc.id !== id);
-    setAccounts(updated);
-    saveAccounts(updated);
+    try {
+      await removeAccount(id);
+    } catch (e) {
+      console.error(e);
+      alert("Ошибка удаления");
+    }
   };
 
   return (
@@ -118,9 +130,10 @@ export default function AccountsMenu({ onClose }: Props) {
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white shadow active:scale-95 transition"
+            disabled={busy}
+            className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white shadow active:scale-95 transition disabled:opacity-50"
           >
-            Создать аккаунт
+            {busy ? "Создание..." : "Создать аккаунт"}
           </button>
         </form>
 

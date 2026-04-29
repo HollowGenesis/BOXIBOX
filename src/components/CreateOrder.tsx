@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { AssignedTo, Order, UserAccount } from "../types";
-import { uid, loadAccounts } from "../storage";
+import { uid, subscribeAccounts } from "../storage";
 import PhotoPicker from "./PhotoPicker";
 
 interface Props {
@@ -17,7 +17,8 @@ export default function CreateOrder({ onCreate, onCancel }: Props) {
   const [accounts, setAccounts] = useState<UserAccount[]>([]);
 
   useEffect(() => {
-    setAccounts(loadAccounts() as UserAccount[]);
+    const unsub = subscribeAccounts(setAccounts);
+    return unsub;
   }, []);
 
   useEffect(() => {
