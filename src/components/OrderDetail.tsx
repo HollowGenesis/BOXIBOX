@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Attachment, Order, Role, UserAccount, ManagerComment } from "../types";
 import { ASSIGNED_LABEL, ROLE_LABEL, STATUS_LABEL } from "../types";
-import { downloadDataUrl, uid, loadAccounts } from "../storage";
+import { downloadDataUrl, uid, subscribeAccounts } from "../storage";
 import PhotoPicker from "./PhotoPicker";
 
 interface Props {
@@ -123,7 +123,8 @@ export default function OrderDetail({ order, role, onBack, onUpdate, onDelete }:
 
   useEffect(() => {
     if (role === 'manager') {
-      setAllAccounts(loadAccounts() as UserAccount[]);
+      const unsub = subscribeAccounts(setAllAccounts);
+      return unsub;
     }
   }, [role]);
 

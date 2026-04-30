@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { Role, UserAccount } from "../types";
-import { loadAccounts } from "../storage";
+import { subscribeAccounts } from "../storage";
 
 interface Props {
   onSelect: (role: Role, loggedUser: { id: string; name: string; role: Role }) => void;
@@ -38,10 +38,9 @@ export default function RoleSelect({ onSelect }: Props) {
   const [accounts, setAccounts] = useState<UserAccount[]>([]);
 
   useEffect(() => {
-    if (step === "accounts" || step === "role") {
-      setAccounts(loadAccounts() as UserAccount[]);
-    }
-  }, [step]);
+    const unsub = subscribeAccounts(setAccounts);
+    return unsub;
+  }, []);
 
   const handleRoleSelect = (role: Role) => {
     setSelectedRole(role);

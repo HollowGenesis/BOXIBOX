@@ -1,9 +1,17 @@
-import type { Order, Role, Notification } from "./types";
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  getDocs,
+  writeBatch,
+} from "firebase/firestore";
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import { db, storage } from "./firebase";
+import type { Order, Role, Notification, UserAccount, Attachment } from "./types";
 
-const ORDERS_KEY = "production_orders_v1";
-const NOTIFS_KEY = "production_notifs_v1";
 const ROLE_KEY = "production_role_v1";
-const ACCOUNTS_KEY = "production_accounts_v1";
 const LOGGED_USER_KEY = "production_user_v1";
 
 export interface LoggedUser {
@@ -12,17 +20,17 @@ export interface LoggedUser {
   role: Role;
 }
 
-export function loadAccounts(): any[] {
-  try {
-    const raw = localStorage.getItem(ACCOUNTS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+// ==================== Local Storage (device-specific) ====================
+
+export function loadRole(): Role | null {
+  const v = localStorage.getItem(ROLE_KEY);
+  if (v === "manager" || v === "preparer" || v === "assembler") return v;
+  return null;
 }
 
-export function saveAccounts(accounts: any[]): void {
-  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+export function saveRole(role: Role | null): void {
+  if (role) localStorage.setItem(ROLE_KEY, role);
+  else localStorage.removeItem(ROLE_KEY);
 }
 
 export function loadLoggedUser(): LoggedUser | null {
@@ -39,58 +47,16 @@ export function saveLoggedUser(user: LoggedUser | null): void {
   else localStorage.removeItem(LOGGED_USER_KEY);
 }
 
-export function loadNotifications(): Notification[] {
-  try {
-    const raw = localStorage.getItem(NOTIFS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveNotifications(notifs: Notification[]): void {
-  localStorage.setItem(NOTIFS_KEY, JSON.stringify(notifs));
-}
-
-export function loadOrders(): Order[] {
-  try {
-    const raw = localStorage.getItem(ORDERS_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as Order[];
-  } catch {
-    return [];
-  }
-}
-
-export function saveOrders(orders: Order[]): void {
-  try {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-  } catch (e) {
-    console.error("Не удалось сохранить заказы", e);
-    alert("Не удалось сохранить данные. Возможно, переполнено хранилище браузера.");
-  }
-}
-
-export function loadRole(): Role | null {
-  const v = localStorage.getItem(ROLE_KEY);
-  if (v === "manager" || v === "preparer" || v === "assembler") return v;
-  return null;
-}
-
-export function saveRole(role: Role | null): void {
-  if (role) localStorage.setItem(ROLE_KEY, role);
-  else localStorage.removeItem(ROLE_KEY);
-}
+// ==================== Utility ====================
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-// Сжатие изображения в base64 JPEG, чтобы поместилось в localStorage
 export async function fileToCompressedDataUrl(
   file: File,
-  maxSize = 1600,
-  quality = 0.78,
+  maxSize = 1200,
+  quality = 0.7,
 ): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -127,10 +93,138 @@ export async function fileToCompressedDataUrl(
 }
 
 export function downloadDataUrl(dataUrl: string, filename: string): void {
-  const a = document.createElement("a");
-  a.href = dataUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  if (!dataUrl) return;
+  
+  // Handle both data URLs and https URLs
+  if (dataUrl.startsWith("data:")) {
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } else {
+    // For Firebase Storage URLs, open in new tab
+    window.open(dataUrl, "_blank");
+  }
+}
+
+// ==================== Firebase Storage (images) ====================
+
+async function uploadImage(dataUrl: string, path: string): Promise<string> {
+  try {
+    const storageRef = ref(storage, path);
+    await uploadString(storageRef, dataUrl, "data_url");
+    return await getDownloadURL(storageRef);
+  } catch (error) {
+    console.error("Ошибка загрузки изображения:", error);
+    // Fallback: return original dataUrl if upload fails
+    return dataUrl;
+  }
+}
+
+async function processAttachments(
+  atts: Attachment[],
+  orderId: string,
+  folder: string,
+): Promise<Attachment[]> {
+  const results: Attachment[] = [];
+  for (const att of atts) {
+    if (att.dataUrl && att.dataUrl.startsWith("data:")) {
+      try {
+        const url = await uploadImage(att.dataUrl, `orders/${orderId}/${folder}/${att.id}.jpg`);
+        results.push({ ...att, dataUrl: url });
+      } catch {
+        results.push(att);
+      }
+    } else {
+      results.push(att);
+    }
+  }
+  return results;
+}
+
+export async function processOrderImages(order: Order): Promise<Order> {
+  const taskPhotos = await processAttachments(order.taskPhotos, order.id, "task");
+  const completionPhotos = await processAttachments(order.completionPhotos, order.id, "completion");
+  return { ...order, taskPhotos, completionPhotos };
+}
+
+// ==================== Firestore: Orders ====================
+
+export function subscribeOrders(callback: (orders: Order[]) => void): () => void {
+  return onSnapshot(
+    collection(db, "orders"),
+    (snapshot) => {
+      const orders = snapshot.docs.map((d) => d.data() as Order);
+      orders.sort((a, b) => b.updatedAt - a.updatedAt);
+      callback(orders);
+    },
+    (error) => {
+      console.error("Ошибка загрузки заказов:", error);
+    },
+  );
+}
+
+export async function saveOrder(order: Order): Promise<void> {
+  const processed = await processOrderImages(order);
+  await setDoc(doc(db, "orders", processed.id), processed);
+}
+
+export async function removeOrder(id: string): Promise<void> {
+  await deleteDoc(doc(db, "orders", id));
+}
+
+// ==================== Firestore: Accounts ====================
+
+export function subscribeAccounts(callback: (accounts: UserAccount[]) => void): () => void {
+  return onSnapshot(
+    collection(db, "accounts"),
+    (snapshot) => {
+      const accounts = snapshot.docs.map((d) => d.data() as UserAccount);
+      callback(accounts);
+    },
+    (error) => {
+      console.error("Ошибка загрузки аккаунтов:", error);
+    },
+  );
+}
+
+export async function saveAccount(account: UserAccount): Promise<void> {
+  await setDoc(doc(db, "accounts", account.id), account);
+}
+
+export async function removeAccount(id: string): Promise<void> {
+  await deleteDoc(doc(db, "accounts", id));
+}
+
+// ==================== Firestore: Notifications ====================
+
+export function subscribeNotifications(callback: (notifs: Notification[]) => void): () => void {
+  return onSnapshot(
+    collection(db, "notifications"),
+    (snapshot) => {
+      const notifs = snapshot.docs.map((d) => d.data() as Notification);
+      notifs.sort((a, b) => b.createdAt - a.createdAt);
+      callback(notifs);
+    },
+    (error) => {
+      console.error("Ошибка загрузки уведомлений:", error);
+    },
+  );
+}
+
+export async function addNotification(notif: Notification): Promise<void> {
+  await setDoc(doc(db, "notifications", notif.id), notif);
+}
+
+export async function updateNotification(id: string, data: Partial<Notification>): Promise<void> {
+  await setDoc(doc(db, "notifications", id), data, { merge: true });
+}
+
+export async function clearAllNotifications(): Promise<void> {
+  const snapshot = await getDocs(collection(db, "notifications"));
+  const batch = writeBatch(db);
+  snapshot.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
 }
