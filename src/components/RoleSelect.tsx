@@ -59,7 +59,7 @@ export default function RoleSelect({ onSelect }: Props) {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedRole === "manager") {
-      if (password === "daryaboxi_2026") {
+      if (password === "darya") {
         onSelect("manager", { id: "manager", name: "Дарья", role: "manager" });
       } else {
         alert("Неверный пароль менеджера!");
