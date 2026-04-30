@@ -54,8 +54,8 @@ export function uid(): string {
 
 export async function fileToCompressedDataUrl(
   file: File,
-  maxSize = 800,
-  quality = 0.4,
+  maxSize = 1400,
+  quality = 0.7,
 ): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
