@@ -34,23 +34,19 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Подписка на данные из Firebase
   useEffect(() => {
     const unsubOrders = subscribeOrders((data) => {
       setOrders(data);
       setLoading(false);
     });
     const unsubNotifs = subscribeNotifications(setNotifications);
-    
     return () => {
       unsubOrders();
       unsubNotifs();
     };
   }, []);
 
-  useEffect(() => {
-    saveRole(role);
-  }, [role]);
+  useEffect(() => { saveRole(role); }, [role]);
 
   useEffect(() => {
     saveLoggedUser(loggedUser);
@@ -75,14 +71,12 @@ export default function App() {
     try {
       const oldOrder = orders.find((o) => o.id === order.id);
 
-      // Уведомление для менеджера
       if (oldOrder && role !== "manager") {
         const newCommsCount = order.completionPhotos.length - oldOrder.completionPhotos.length;
         const statusChangedToDone = order.status === "done" && oldOrder.status !== "done";
-
         if (newCommsCount > 0 || statusChangedToDone) {
           const lastAtt = order.completionPhotos[order.completionPhotos.length - 1];
-          const newNotif: Notification = {
+          await addNotification({
             id: uid(),
             orderId: order.id,
             orderTitle: order.title,
@@ -91,15 +85,14 @@ export default function App() {
             createdAt: Date.now(),
             isRead: false,
             type: statusChangedToDone ? "order_done" : "new_comment",
-          };
-          await addNotification(newNotif);
+          });
         }
       }
 
       await saveOrder(order);
     } catch (e) {
       console.error("Ошибка сохранения:", e);
-      alert("Ошибка сохранения. Проверьте подключение к интернету.");
+      alert("Ошибка сохранения. Проверьте интернет.");
     } finally {
       setSaving(false);
     }
@@ -111,34 +104,25 @@ export default function App() {
       await removeOrder(id);
       setScreen({ name: "list" });
     } catch (e) {
-      console.error("Ошибка удаления:", e);
+      console.error(e);
       alert("Ошибка удаления.");
     }
   };
 
   const markNotifRead = async (id: string) => {
-    try {
-      await updateNotification(id, { isRead: true });
-    } catch (e) {
-      console.error(e);
-    }
+    try { await updateNotification(id, { isRead: true }); } catch (e) { console.error(e); }
   };
 
   const clearNotifs = async () => {
-    try {
-      await clearAllNotifications();
-    } catch (e) {
-      console.error(e);
-    }
+    try { await clearAllNotifications(); } catch (e) { console.error(e); }
   };
 
-  // Показываем загрузку
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="text-4xl mb-3 animate-bounce">📦</div>
-          <p className="text-slate-600 font-medium">Загрузка...</p>
+          <p className="text-slate-600 font-medium">Загрузка данных...</p>
         </div>
       </div>
     );

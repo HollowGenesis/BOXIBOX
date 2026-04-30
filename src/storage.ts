@@ -7,9 +7,8 @@ import {
   getDocs,
   writeBatch,
 } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
-import { db, storage } from "./firebase";
-import type { Order, Role, Notification, UserAccount, Attachment } from "./types";
+import { db } from "./firebase";
+import type { Order, Role, Notification, UserAccount } from "./types";
 
 const ROLE_KEY = "production_role_v1";
 const LOGGED_USER_KEY = "production_user_v1";
@@ -56,7 +55,7 @@ export function uid(): string {
 export async function fileToCompressedDataUrl(
   file: File,
   maxSize = 1200,
-  quality = 0.7,
+  quality = 0.6,
 ): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -94,60 +93,12 @@ export async function fileToCompressedDataUrl(
 
 export function downloadDataUrl(dataUrl: string, filename: string): void {
   if (!dataUrl) return;
-  
-  // Handle both data URLs and https URLs
-  if (dataUrl.startsWith("data:")) {
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } else {
-    // For Firebase Storage URLs, open in new tab
-    window.open(dataUrl, "_blank");
-  }
-}
-
-// ==================== Firebase Storage (images) ====================
-
-async function uploadImage(dataUrl: string, path: string): Promise<string> {
-  try {
-    const storageRef = ref(storage, path);
-    await uploadString(storageRef, dataUrl, "data_url");
-    return await getDownloadURL(storageRef);
-  } catch (error) {
-    console.error("Ошибка загрузки изображения:", error);
-    // Fallback: return original dataUrl if upload fails
-    return dataUrl;
-  }
-}
-
-async function processAttachments(
-  atts: Attachment[],
-  orderId: string,
-  folder: string,
-): Promise<Attachment[]> {
-  const results: Attachment[] = [];
-  for (const att of atts) {
-    if (att.dataUrl && att.dataUrl.startsWith("data:")) {
-      try {
-        const url = await uploadImage(att.dataUrl, `orders/${orderId}/${folder}/${att.id}.jpg`);
-        results.push({ ...att, dataUrl: url });
-      } catch {
-        results.push(att);
-      }
-    } else {
-      results.push(att);
-    }
-  }
-  return results;
-}
-
-export async function processOrderImages(order: Order): Promise<Order> {
-  const taskPhotos = await processAttachments(order.taskPhotos, order.id, "task");
-  const completionPhotos = await processAttachments(order.completionPhotos, order.id, "completion");
-  return { ...order, taskPhotos, completionPhotos };
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 // ==================== Firestore: Orders ====================
@@ -167,8 +118,7 @@ export function subscribeOrders(callback: (orders: Order[]) => void): () => void
 }
 
 export async function saveOrder(order: Order): Promise<void> {
-  const processed = await processOrderImages(order);
-  await setDoc(doc(db, "orders", processed.id), processed);
+  await setDoc(doc(db, "orders", order.id), order);
 }
 
 export async function removeOrder(id: string): Promise<void> {
