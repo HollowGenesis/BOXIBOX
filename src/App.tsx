@@ -90,9 +90,9 @@ export default function App() {
       }
 
       await saveOrder(order);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Ошибка сохранения:", e);
-      alert("Ошибка сохранения. Проверьте интернет.");
+      alert("Ошибка сохранения: " + (e?.message || e));
     } finally {
       setSaving(false);
     }
