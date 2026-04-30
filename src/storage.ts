@@ -101,6 +101,24 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   document.body.removeChild(a);
 }
 
+function removeUndefinedValues<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => removeUndefinedValues(item)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, removeUndefinedValues(item)]),
+    ) as T;
+  }
+
+  return value;
+}
+
 // ==================== Firestore: Orders ====================
 
 export function subscribeOrders(callback: (orders: Order[]) => void): () => void {
@@ -118,7 +136,7 @@ export function subscribeOrders(callback: (orders: Order[]) => void): () => void
 }
 
 export async function saveOrder(order: Order): Promise<void> {
-  await setDoc(doc(db, "orders", order.id), order);
+  await setDoc(doc(db, "orders", order.id), removeUndefinedValues(order));
 }
 
 export async function removeOrder(id: string): Promise<void> {
@@ -141,7 +159,7 @@ export function subscribeAccounts(callback: (accounts: UserAccount[]) => void): 
 }
 
 export async function saveAccount(account: UserAccount): Promise<void> {
-  await setDoc(doc(db, "accounts", account.id), account);
+  await setDoc(doc(db, "accounts", account.id), removeUndefinedValues(account));
 }
 
 export async function removeAccount(id: string): Promise<void> {
@@ -165,11 +183,11 @@ export function subscribeNotifications(callback: (notifs: Notification[]) => voi
 }
 
 export async function addNotification(notif: Notification): Promise<void> {
-  await setDoc(doc(db, "notifications", notif.id), notif);
+  await setDoc(doc(db, "notifications", notif.id), removeUndefinedValues(notif));
 }
 
 export async function updateNotification(id: string, data: Partial<Notification>): Promise<void> {
-  await setDoc(doc(db, "notifications", id), data, { merge: true });
+  await setDoc(doc(db, "notifications", id), removeUndefinedValues(data), { merge: true });
 }
 
 export async function clearAllNotifications(): Promise<void> {
