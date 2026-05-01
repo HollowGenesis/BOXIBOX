@@ -54,9 +54,10 @@ export function uid(): string {
 
 export async function fileToCompressedDataUrl(
   file: File,
-  maxSize = 1400,
-  quality = 0.7,
 ): Promise<string> {
+  const TARGET_SIZE = 900_000; // 0.9 МБ в байтах
+
+  // Читаем оригинал
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -64,6 +65,12 @@ export async function fileToCompressedDataUrl(
     reader.readAsDataURL(file);
   });
 
+  // Если меньше 1 МБ — возвращаем без сжатия
+  if (dataUrl.length <= 1_000_000) {
+    return dataUrl;
+  }
+
+  // Загружаем изображение для сжатия
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const i = new Image();
     i.onload = () => resolve(i);
@@ -71,24 +78,41 @@ export async function fileToCompressedDataUrl(
     i.src = dataUrl;
   });
 
-  let { width, height } = img;
-  if (width > maxSize || height > maxSize) {
-    if (width >= height) {
-      height = Math.round((height * maxSize) / width);
-      width = maxSize;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+
+  // Пробуем разные комбинации качества и размера
+  let quality = 0.9;
+  let scale = 1.0;
+
+  while (quality >= 0.1) {
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    canvas.width = w;
+    canvas.height = h;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const result = canvas.toDataURL("image/jpeg", quality);
+
+    if (result.length <= TARGET_SIZE) {
+      return result;
+    }
+
+    // Сначала снижаем качество, потом размер
+    if (quality > 0.3) {
+      quality -= 0.1;
     } else {
-      width = Math.round((width * maxSize) / height);
-      height = maxSize;
+      scale -= 0.1;
+      quality = 0.5;
     }
   }
 
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return dataUrl;
-  ctx.drawImage(img, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", quality);
+  // Финальная попытка с минимальными параметрами
+  canvas.width = Math.round(img.width * 0.3);
+  canvas.height = Math.round(img.height * 0.3);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.3);
 }
 
 export function downloadDataUrl(dataUrl: string, filename: string): void {
